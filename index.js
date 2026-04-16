@@ -5,31 +5,6 @@ const {
   AttachmentBuilder,
 } = require("discord.js");
 
-async function sendCharacterImage(message, character) {
-  const imgUrl =
-    character.images[Math.floor(Math.random() * character.images.length)];
-  const ext = imgUrl.split(".").pop().toLowerCase().split("?")[0];
-  const fileName = `${character.name.toLowerCase().replace(/\s+/g, "_")}.${ext}`;
-
-  const res = await fetch(imgUrl, { headers: { "User-Agent": "discord-bot" } });
-  if (!res.ok) throw new Error(`Không tải được ảnh: ${res.status}`);
-  const buffer = Buffer.from(await res.arrayBuffer());
-
-  const attachment = new AttachmentBuilder(buffer, { name: fileName });
-  const embed = new EmbedBuilder()
-    .setAuthor({
-      name: `✦ ${character.name}`,
-      iconURL: `attachment://${fileName}`,
-    })
-    .setDescription(`__✦ ${character.name}__`)
-    .setThumbnail(`attachment://${fileName}`)
-    .setImage(`attachment://${fileName}`)
-    .setColor(0xff0033)
-    .setFooter({ text: "Endfield Characters" });
-
-  await message.reply({ embeds: [embed], files: [attachment] });
-}
-
 const GITHUB_OWNER = "emilysaki519-maker";
 const GITHUB_REPO = "Endfield";
 const IMAGES_PATH = "images";
@@ -54,6 +29,17 @@ async function fetchJson(url) {
   return res.json();
 }
 
+function filterImages(files) {
+  return files
+    .filter(
+      (f) =>
+        f.type === "file" &&
+        f.download_url &&
+        /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name)
+    )
+    .map((f) => f.download_url);
+}
+
 async function loadCharacters() {
   const now = Date.now();
   if (cachedCharacters.length > 0 && now - cacheTime < CACHE_TTL_MS) {
@@ -61,33 +47,42 @@ async function loadCharacters() {
   }
 
   const apiBase = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents`;
-  const dirs = await fetchJson(`${apiBase}/${IMAGES_PATH}`);
-  const folders = dirs.filter((d) => d.type === "dir");
+  const topLevel = await fetchJson(`${apiBase}/${IMAGES_PATH}`);
+
+  // Tải ảnh thumb dùng chung từ images/thumb/
+  let sharedThumbs = [];
+  const thumbFolder = topLevel.find(
+    (d) => d.type === "dir" && d.name.toLowerCase() === "thumb"
+  );
+  if (thumbFolder) {
+    const thumbFiles = await fetchJson(`${apiBase}/${IMAGES_PATH}/thumb`);
+    sharedThumbs = filterImages(thumbFiles);
+  }
+
+  // Chỉ lấy các folder nhân vật (bỏ qua folder thumb)
+  const characterFolders = topLevel.filter(
+    (d) => d.type === "dir" && d.name.toLowerCase() !== "thumb"
+  );
 
   const results = [];
-  for (const folder of folders) {
-    const files = await fetchJson(`${apiBase}/${IMAGES_PATH}/${folder.name}`);
-    const images = files
-      .filter(
-        (f) =>
-          f.type === "file" &&
-          f.download_url &&
-          /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name),
-      )
-      .map((f) => f.download_url);
 
-    if (images.length > 0) {
+  for (const folder of characterFolders) {
+    const files = await fetchJson(`${apiBase}/${IMAGES_PATH}/${folder.name}`);
+    const mainImages = filterImages(files);
+
+    if (mainImages.length > 0) {
       results.push({
         name: folder.name,
         aliases: generateAliases(folder.name),
-        images,
+        mainImages,
+        thumbImages: sharedThumbs,
       });
     }
   }
 
   cachedCharacters = results;
   cacheTime = now;
-  console.log(`[Bot] Đã tải ${results.length} nhân vật từ GitHub`);
+  console.log(`[Bot] Đã tải ${results.length} nhân vật, ${sharedThumbs.length} ảnh thumb từ GitHub`);
   return results;
 }
 
@@ -100,8 +95,8 @@ async function findCharacter(query) {
         c.name.toLowerCase() === q ||
         c.aliases.some(
           (alias) =>
-            alias.toLowerCase() === q || q.startsWith(alias.toLowerCase()),
-        ),
+            alias.toLowerCase() === q || q.startsWith(alias.toLowerCase())
+        )
     ) || null
   );
 }
@@ -109,6 +104,51 @@ async function findCharacter(query) {
 async function getAllNames() {
   const chars = await loadCharacters();
   return chars.map((c) => c.name);
+}
+
+async function sendCharacterImage(message, character) {
+  const mainUrl =
+    character.mainImages[Math.floor(Math.random() * character.mainImages.length)];
+
+  const thumbUrl =
+    character.thumbImages.length > 0
+      ? character.thumbImages[Math.floor(Math.random() * character.thumbImages.length)]
+      : null;
+
+  const mainExt = mainUrl.split(".").pop().toLowerCase().split("?")[0];
+  const mainFileName = `main.${mainExt}`;
+
+  const mainRes = await fetch(mainUrl, { headers: { "User-Agent": "discord-bot" } });
+  if (!mainRes.ok) throw new Error(`Không tải được ảnh chính: ${mainRes.status}`);
+  const mainAttachment = new AttachmentBuilder(
+    Buffer.from(await mainRes.arrayBuffer()),
+    { name: mainFileName }
+  );
+
+  const files = [mainAttachment];
+  let thumbFileName = mainFileName;
+
+  if (thumbUrl) {
+    const thumbExt = thumbUrl.split(".").pop().toLowerCase().split("?")[0];
+    thumbFileName = `thumb.${thumbExt}`;
+    const thumbRes = await fetch(thumbUrl, { headers: { "User-Agent": "discord-bot" } });
+    if (thumbRes.ok) {
+      files.push(
+        new AttachmentBuilder(Buffer.from(await thumbRes.arrayBuffer()), {
+          name: thumbFileName,
+        })
+      );
+    }
+  }
+
+  const embed = new EmbedBuilder()
+    .setDescription(`__✦ ${character.name}__`)
+    .setThumbnail(`attachment://${thumbFileName}`)
+    .setImage(`attachment://${mainFileName}`)
+    .setColor(0xff0033)
+    .setFooter({ text: "Endfield Characters" });
+
+  await message.reply({ embeds: [embed], files });
 }
 
 const NV_PREFIXES = ["!nhân vật ", "!nhan vat ", "!nv "];
@@ -126,8 +166,7 @@ function parseCommand(content) {
   }
   if (lower === "!list") return { cmd: "list", args: "" };
   if (lower === "!reload") return { cmd: "reload", args: "" };
-  if (lower.startsWith("!"))
-    return { cmd: "shortcut", args: content.slice(1).trim() };
+  if (lower.startsWith("!")) return { cmd: "shortcut", args: content.slice(1).trim() };
   return { cmd: "", args: "" };
 }
 
@@ -142,7 +181,7 @@ const client = new Client({
 client.once("clientReady", () => {
   console.log(`[Bot] Online: ${client.user.tag}`);
   loadCharacters().catch((err) =>
-    console.error("[Bot] Lỗi tải nhân vật:", err.message),
+    console.error("[Bot] Lỗi tải nhân vật:", err.message)
   );
 });
 
@@ -157,12 +196,10 @@ client.on("messageCreate", async (message) => {
     if (cmd === "reload") {
       cacheTime = 0;
       cachedCharacters = [];
-      const msg = await message.reply(
-        "🔄 Đang tải lại danh sách nhân vật từ GitHub...",
-      );
+      const msg = await message.reply("🔄 Đang tải lại danh sách nhân vật từ GitHub...");
       const names = await getAllNames();
       await msg.edit(
-        `✅ Đã tải lại! Hiện có **${names.length}** nhân vật: ${names.join(", ")}`,
+        `✅ Đã tải lại! Hiện có **${names.length}** nhân vật: ${names.join(", ")}`
       );
       return;
     }
@@ -171,7 +208,7 @@ client.on("messageCreate", async (message) => {
       const names = await getAllNames();
       if (names.length === 0) {
         await message.reply(
-          "⚠️ Chưa có nhân vật nào. Thêm thư mục ảnh vào GitHub rồi dùng `!reload`.",
+          "⚠️ Chưa có nhân vật nào. Thêm thư mục ảnh vào GitHub rồi dùng `!reload`."
         );
         return;
       }
@@ -179,9 +216,7 @@ client.on("messageCreate", async (message) => {
         .setTitle("📋 Danh sách nhân vật")
         .setDescription(names.map((n) => `• **${n}**`).join("\n"))
         .setColor(0x5865f2)
-        .setFooter({
-          text: "Dùng !nhân vật [tên] để xem ảnh • !reload để cập nhật",
-        });
+        .setFooter({ text: "Dùng !nhân vật [tên] để xem ảnh • !reload để cập nhật" });
       await message.reply({ embeds: [embed] });
       return;
     }
@@ -189,14 +224,14 @@ client.on("messageCreate", async (message) => {
     if (cmd === "nv") {
       if (!args) {
         await message.reply(
-          "❓ Bạn muốn xem nhân vật nào?\nDùng `!list` để xem danh sách.\n\nVí dụ: `!nhân vật Xaihi`",
+          "❓ Bạn muốn xem nhân vật nào?\nDùng `!list` để xem danh sách.\n\nVí dụ: `!nhân vật Xaihi`"
         );
         return;
       }
       const character = await findCharacter(args);
       if (!character) {
         await message.reply(
-          `❌ Không tìm thấy **${args}**.\nDùng \`!list\` để xem danh sách.`,
+          `❌ Không tìm thấy **${args}**.\nDùng \`!list\` để xem danh sách.`
         );
         return;
       }
