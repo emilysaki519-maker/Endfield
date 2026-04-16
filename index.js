@@ -1,4 +1,23 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const { Client, GatewayIntentBits, EmbedBuilder, AttachmentBuilder } = require("discord.js");
+
+async function sendCharacterImage(message, character) {
+  const imgUrl = character.images[Math.floor(Math.random() * character.images.length)];
+  const ext = imgUrl.split(".").pop().toLowerCase().split("?")[0];
+  const fileName = `${character.name.toLowerCase()}.${ext}`;
+
+  const res = await fetch(imgUrl, { headers: { "User-Agent": "discord-bot" } });
+  if (!res.ok) throw new Error(`Không tải được ảnh: ${res.status}`);
+  const buffer = Buffer.from(await res.arrayBuffer());
+
+  const attachment = new AttachmentBuilder(buffer, { name: fileName });
+  const embed = new EmbedBuilder()
+    .setTitle(`🌟 ${character.name}`)
+    .setImage(`attachment://${fileName}`)
+    .setColor(0x5865f2)
+    .setFooter({ text: `!nhân vật ${character.name}` });
+
+  await message.reply({ embeds: [embed], files: [attachment] });
+}
 
 const GITHUB_OWNER = "emilysaki519-maker";
 const GITHUB_REPO = "Endfield";
@@ -159,26 +178,14 @@ client.on("messageCreate", async (message) => {
         await message.reply(`❌ Không tìm thấy **${args}**.\nDùng \`!list\` để xem danh sách.`);
         return;
       }
-      const img = character.images[Math.floor(Math.random() * character.images.length)];
-      const embed = new EmbedBuilder()
-        .setTitle(`🌟 ${character.name}`)
-        .setImage(img)
-        .setColor(0x5865f2)
-        .setFooter({ text: `!nhân vật ${character.name}` });
-      await message.reply({ embeds: [embed] });
+      await sendCharacterImage(message, character);
       return;
     }
 
     if (cmd === "shortcut" && args.length > 0) {
       const character = await findCharacter(args);
       if (character) {
-        const img = character.images[Math.floor(Math.random() * character.images.length)];
-        const embed = new EmbedBuilder()
-          .setTitle(`🌟 ${character.name}`)
-          .setImage(img)
-          .setColor(0x5865f2)
-          .setFooter({ text: `!nhân vật ${character.name}` });
-        await message.reply({ embeds: [embed] });
+        await sendCharacterImage(message, character);
       }
     }
   } catch (err) {
