@@ -142,7 +142,7 @@ async function sendCharacterImage(message, character) {
   }
 
   const embed = new EmbedBuilder()
-    .setDescription(`__✦ ${character.name}__`)
+    .setDescription(`## __**✦ ${character.name}**__`)
     .setThumbnail(`attachment://${thumbFileName}`)
     .setImage(`attachment://${mainFileName}`)
     .setColor(0xff0033)
