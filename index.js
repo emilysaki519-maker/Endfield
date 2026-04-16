@@ -1,9 +1,15 @@
-const { Client, GatewayIntentBits, EmbedBuilder, AttachmentBuilder } = require("discord.js");
+const {
+  Client,
+  GatewayIntentBits,
+  EmbedBuilder,
+  AttachmentBuilder,
+} = require("discord.js");
 
 async function sendCharacterImage(message, character) {
-  const imgUrl = character.images[Math.floor(Math.random() * character.images.length)];
+  const imgUrl =
+    character.images[Math.floor(Math.random() * character.images.length)];
   const ext = imgUrl.split(".").pop().toLowerCase().split("?")[0];
-  const fileName = `${character.name.toLowerCase()}.${ext}`;
+  const fileName = `${character.name.toLowerCase().replace(/\s+/g, "_")}.${ext}`;
 
   const res = await fetch(imgUrl, { headers: { "User-Agent": "discord-bot" } });
   if (!res.ok) throw new Error(`Không tải được ảnh: ${res.status}`);
@@ -11,10 +17,15 @@ async function sendCharacterImage(message, character) {
 
   const attachment = new AttachmentBuilder(buffer, { name: fileName });
   const embed = new EmbedBuilder()
-    .setTitle(`🌟 ${character.name}`)
+    .setAuthor({
+      name: `✦ ${character.name}`,
+      iconURL: `attachment://${fileName}`,
+    })
+    .setDescription(`__✦ ${character.name}__`)
+    .setThumbnail(`attachment://${fileName}`)
     .setImage(`attachment://${fileName}`)
-    .setColor(0x5865f2)
-    .setFooter({ text: `!nhân vật ${character.name}` });
+    .setColor(0xff0033)
+    .setFooter({ text: "Endfield Characters" });
 
   await message.reply({ embeds: [embed], files: [attachment] });
 }
@@ -61,7 +72,7 @@ async function loadCharacters() {
         (f) =>
           f.type === "file" &&
           f.download_url &&
-          /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name)
+          /\.(jpg|jpeg|png|gif|webp)$/i.test(f.name),
       )
       .map((f) => f.download_url);
 
@@ -89,8 +100,8 @@ async function findCharacter(query) {
         c.name.toLowerCase() === q ||
         c.aliases.some(
           (alias) =>
-            alias.toLowerCase() === q || q.startsWith(alias.toLowerCase())
-        )
+            alias.toLowerCase() === q || q.startsWith(alias.toLowerCase()),
+        ),
     ) || null
   );
 }
@@ -115,7 +126,8 @@ function parseCommand(content) {
   }
   if (lower === "!list") return { cmd: "list", args: "" };
   if (lower === "!reload") return { cmd: "reload", args: "" };
-  if (lower.startsWith("!")) return { cmd: "shortcut", args: content.slice(1).trim() };
+  if (lower.startsWith("!"))
+    return { cmd: "shortcut", args: content.slice(1).trim() };
   return { cmd: "", args: "" };
 }
 
@@ -130,7 +142,7 @@ const client = new Client({
 client.once("clientReady", () => {
   console.log(`[Bot] Online: ${client.user.tag}`);
   loadCharacters().catch((err) =>
-    console.error("[Bot] Lỗi tải nhân vật:", err.message)
+    console.error("[Bot] Lỗi tải nhân vật:", err.message),
   );
 });
 
@@ -145,10 +157,12 @@ client.on("messageCreate", async (message) => {
     if (cmd === "reload") {
       cacheTime = 0;
       cachedCharacters = [];
-      const msg = await message.reply("🔄 Đang tải lại danh sách nhân vật từ GitHub...");
+      const msg = await message.reply(
+        "🔄 Đang tải lại danh sách nhân vật từ GitHub...",
+      );
       const names = await getAllNames();
       await msg.edit(
-        `✅ Đã tải lại! Hiện có **${names.length}** nhân vật: ${names.join(", ")}`
+        `✅ Đã tải lại! Hiện có **${names.length}** nhân vật: ${names.join(", ")}`,
       );
       return;
     }
@@ -156,26 +170,34 @@ client.on("messageCreate", async (message) => {
     if (cmd === "list") {
       const names = await getAllNames();
       if (names.length === 0) {
-        await message.reply("⚠️ Chưa có nhân vật nào. Thêm thư mục ảnh vào GitHub rồi dùng `!reload`.");
+        await message.reply(
+          "⚠️ Chưa có nhân vật nào. Thêm thư mục ảnh vào GitHub rồi dùng `!reload`.",
+        );
         return;
       }
       const embed = new EmbedBuilder()
         .setTitle("📋 Danh sách nhân vật")
         .setDescription(names.map((n) => `• **${n}**`).join("\n"))
         .setColor(0x5865f2)
-        .setFooter({ text: "Dùng !nhân vật [tên] để xem ảnh • !reload để cập nhật" });
+        .setFooter({
+          text: "Dùng !nhân vật [tên] để xem ảnh • !reload để cập nhật",
+        });
       await message.reply({ embeds: [embed] });
       return;
     }
 
     if (cmd === "nv") {
       if (!args) {
-        await message.reply("❓ Bạn muốn xem nhân vật nào?\nDùng `!list` để xem danh sách.\n\nVí dụ: `!nhân vật Xaihi`");
+        await message.reply(
+          "❓ Bạn muốn xem nhân vật nào?\nDùng `!list` để xem danh sách.\n\nVí dụ: `!nhân vật Xaihi`",
+        );
         return;
       }
       const character = await findCharacter(args);
       if (!character) {
-        await message.reply(`❌ Không tìm thấy **${args}**.\nDùng \`!list\` để xem danh sách.`);
+        await message.reply(
+          `❌ Không tìm thấy **${args}**.\nDùng \`!list\` để xem danh sách.`,
+        );
         return;
       }
       await sendCharacterImage(message, character);
