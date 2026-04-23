@@ -9,9 +9,16 @@ const GITHUB_OWNER = "emilysaki519-maker";
 const GITHUB_REPO = "Endfield";
 const IMAGES_PATH = "images";
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
 let cachedCharacters = [];
 let cacheTime = 0;
+
+function ghHeaders() {
+  const headers = { "User-Agent": "discord-bot" };
+  if (GITHUB_TOKEN) headers["Authorization"] = `Bearer ${GITHUB_TOKEN}`;
+  return headers;
+}
 
 function generateAliases(folderName) {
   const lower = folderName.toLowerCase().replace(/\s+/g, "");
@@ -24,7 +31,7 @@ function generateAliases(folderName) {
 }
 
 async function fetchJson(url) {
-  const res = await fetch(url, { headers: { "User-Agent": "discord-bot" } });
+  const res = await fetch(url, { headers: ghHeaders() });
   if (!res.ok) throw new Error(`GitHub API lỗi ${res.status}: ${url}`);
   return res.json();
 }
@@ -118,7 +125,7 @@ async function sendCharacterImage(message, character) {
   const mainExt = mainUrl.split(".").pop().toLowerCase().split("?")[0];
   const mainFileName = `main.${mainExt}`;
 
-  const mainRes = await fetch(mainUrl, { headers: { "User-Agent": "discord-bot" } });
+  const mainRes = await fetch(mainUrl, { headers: ghHeaders() });
   if (!mainRes.ok) throw new Error(`Không tải được ảnh chính: ${mainRes.status}`);
   const mainAttachment = new AttachmentBuilder(
     Buffer.from(await mainRes.arrayBuffer()),
@@ -131,7 +138,7 @@ async function sendCharacterImage(message, character) {
   if (thumbUrl) {
     const thumbExt = thumbUrl.split(".").pop().toLowerCase().split("?")[0];
     thumbFileName = `thumb.${thumbExt}`;
-    const thumbRes = await fetch(thumbUrl, { headers: { "User-Agent": "discord-bot" } });
+    const thumbRes = await fetch(thumbUrl, { headers: ghHeaders() });
     if (thumbRes.ok) {
       files.push(
         new AttachmentBuilder(Buffer.from(await thumbRes.arrayBuffer()), {
@@ -180,6 +187,11 @@ const client = new Client({
 
 client.once("clientReady", () => {
   console.log(`[Bot] Online: ${client.user.tag}`);
+  if (GITHUB_TOKEN) {
+    console.log("[Bot] ✅ Đang dùng GitHub token (5000 req/giờ)");
+  } else {
+    console.log("[Bot] ⚠️ Chưa có GITHUB_TOKEN, giới hạn 60 req/giờ");
+  }
   loadCharacters().catch((err) =>
     console.error("[Bot] Lỗi tải nhân vật:", err.message)
   );
